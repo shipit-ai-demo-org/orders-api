@@ -1,10 +1,13 @@
 import Fastify from "fastify";
+import healthRoutes from "./routes/health";
 
 const app = Fastify({
   logger: {
     level: process.env.LOG_LEVEL ?? "info",
   },
 });
+
+app.register(healthRoutes);
 
 const start = async () => {
   try {
