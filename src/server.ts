@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import healthRoutes from "./routes/health";
+import orderRoutes from "./routes/orders";
 
 const app = Fastify({
   logger: {
@@ -8,6 +9,7 @@ const app = Fastify({
 });
 
 app.register(healthRoutes);
+app.register(orderRoutes, { prefix: "/v1" });
 
 const start = async () => {
   try {
