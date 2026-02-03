@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import healthRoutes from "./routes/health";
 import orderRoutes from "./routes/orders";
+import authPlugin from "./plugins/auth";
 
 const app = Fastify({
   logger: {
@@ -8,6 +9,7 @@ const app = Fastify({
   },
 });
 
+app.register(authPlugin);
 app.register(healthRoutes);
 app.register(orderRoutes, { prefix: "/v1" });
 
