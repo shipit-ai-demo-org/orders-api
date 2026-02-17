@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { getPool, withTransaction } from "../db/client";
+import { buildEvent, publishOrderEvent } from "../events/publisher";
 
 interface OrderItemInput {
   sku: string;
@@ -71,6 +72,14 @@ export default async function orderRoutes(app: FastifyInstance) {
       }
       return created;
     });
+
+    await publishOrderEvent(
+      buildEvent("order.created", order.id, {
+        customerId: order.customer_id,
+        totalCents: order.total_cents,
+        itemCount: body.items.length,
+      })
+    );
 
     reply.code(201);
     return { order };
