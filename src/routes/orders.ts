@@ -84,4 +84,30 @@ export default async function orderRoutes(app: FastifyInstance) {
     reply.code(201);
     return { order };
   });
+
+  app.post("/orders/:id/ship", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { trackingNumber, carrier } = req.body as {
+      trackingNumber: string;
+      carrier: string;
+    };
+
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `UPDATE orders SET status = 'shipped', updated_at = now()
+       WHERE id = $1 AND status IN ('confirmed', 'picking')
+       RETURNING *`,
+      [id]
+    );
+    if (rows.length === 0) {
+      reply.code(409);
+      return { error: "invalid_status_transition" };
+    }
+
+    await publishOrderEvent(
+      buildEvent("order.shipped", id, { trackingNumber, carrier })
+    );
+
+    return { order: rows[0] };
+  });
 }

@@ -2,7 +2,7 @@ import amqp, { Channel } from "amqplib";
 
 const EXCHANGE = "cargocloud.orders";
 
-export type OrderEventType = "order.created";
+export type OrderEventType = "order.created" | "order.shipped";
 
 export interface OrderEvent {
   type: OrderEventType;
