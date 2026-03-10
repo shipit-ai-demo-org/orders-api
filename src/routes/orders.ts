@@ -46,6 +46,18 @@ export default async function orderRoutes(app: FastifyInstance) {
   app.post("/orders", async (req, reply) => {
     const body = req.body as CreateOrderBody;
 
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      reply.code(400);
+      return { error: "order_requires_items" };
+    }
+    const invalid = body.items.find(
+      (it) => !Number.isInteger(it.quantity) || it.quantity <= 0 || it.unitCents < 0
+    );
+    if (invalid) {
+      reply.code(400);
+      return { error: "invalid_line_item", sku: invalid.sku };
+    }
+
     const order = await withTransaction(async (tx) => {
       const totalCents = body.items.reduce(
         (sum, it) => sum + it.quantity * it.unitCents,
