@@ -1,0 +1,29 @@
+name: CI
+
+on: [push, workflow_dispatch]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify project manifests
+        run: |
+          test -f package.json
+          test -f tsconfig.json
+
+      - name: Verify route registration
+        run: |
+          grep -q "orderRoutes" src/server.ts
+          grep -q "healthRoutes" src/server.ts
+
+      - name: Verify event contracts
+        run: |
+          grep -q "order.created" src/events/publisher.ts
+          grep -q "order.shipped" src/events/publisher.ts
+
+      - name: Verify database schema
+        run: |
+          test -f src/db/schema.sql
+          grep -qi "CREATE TABLE" src/db/schema.sql
