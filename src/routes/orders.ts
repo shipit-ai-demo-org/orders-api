@@ -86,11 +86,16 @@ export default async function orderRoutes(app: FastifyInstance) {
     });
 
     await publishOrderEvent(
-      buildEvent("order.created", order.id, {
-        customerId: order.customer_id,
-        totalCents: order.total_cents,
-        itemCount: body.items.length,
-      })
+      buildEvent(
+        "order.created",
+        order.id,
+        {
+          customerId: order.customer_id,
+          totalCents: order.total_cents,
+          itemCount: body.items.length,
+        },
+        req.id
+      )
     );
 
     reply.code(201);
@@ -117,7 +122,7 @@ export default async function orderRoutes(app: FastifyInstance) {
     }
 
     await publishOrderEvent(
-      buildEvent("order.shipped", id, { trackingNumber, carrier })
+      buildEvent("order.shipped", id, { trackingNumber, carrier }, req.id)
     );
 
     return { order: rows[0] };
