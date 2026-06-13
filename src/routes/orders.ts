@@ -58,32 +58,74 @@ export default async function orderRoutes(app: FastifyInstance) {
       return { error: "invalid_line_item", sku: invalid.sku };
     }
 
-    const order = await withTransaction(async (tx) => {
-      const totalCents = body.items.reduce(
-        (sum, it) => sum + it.quantity * it.unitCents,
-        0
+    const rawKey = req.headers["idempotency-key"];
+    const idempotencyKey = Array.isArray(rawKey) ? rawKey[0] : rawKey;
+    if (idempotencyKey !== undefined && idempotencyKey.length > 255) {
+      reply.code(400);
+      return { error: "invalid_idempotency_key" };
+    }
+
+    // Retries with the same Idempotency-Key replay the original order
+    // instead of creating a duplicate. Clients (web-storefront, mobile-app)
+    // send a fresh key per checkout attempt.
+    if (idempotencyKey) {
+      const { rows } = await getPool().query(
+        "SELECT * FROM orders WHERE customer_id = $1 AND idempotency_key = $2",
+        [body.customerId, idempotencyKey]
       );
-      const { rows } = await tx.query(
-        `INSERT INTO orders (customer_id, currency, shipping_method, destination, total_cents)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [
-          body.customerId,
-          body.currency ?? "USD",
-          body.shippingMethod ?? "ground",
-          JSON.stringify(body.destination),
-          totalCents,
-        ]
-      );
-      const created = rows[0];
-      for (const item of body.items) {
-        await tx.query(
-          `INSERT INTO order_items (order_id, sku, quantity, unit_cents)
-           VALUES ($1, $2, $3, $4)`,
-          [created.id, item.sku, item.quantity, item.unitCents]
-        );
+      if (rows.length > 0) {
+        reply.header("idempotent-replayed", "true");
+        return { order: rows[0] };
       }
-      return created;
-    });
+    }
+
+    let order;
+    try {
+      order = await withTransaction(async (tx) => {
+        const totalCents = body.items.reduce(
+          (sum, it) => sum + it.quantity * it.unitCents,
+          0
+        );
+        const { rows } = await tx.query(
+          `INSERT INTO orders (customer_id, currency, shipping_method, destination, total_cents, idempotency_key)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+          [
+            body.customerId,
+            body.currency ?? "USD",
+            body.shippingMethod ?? "ground",
+            JSON.stringify(body.destination),
+            totalCents,
+            idempotencyKey ?? null,
+          ]
+        );
+        const created = rows[0];
+        for (const item of body.items) {
+          await tx.query(
+            `INSERT INTO order_items (order_id, sku, quantity, unit_cents)
+             VALUES ($1, $2, $3, $4)`,
+            [created.id, item.sku, item.quantity, item.unitCents]
+          );
+        }
+        return created;
+      });
+    } catch (err) {
+      // Unique violation on (customer_id, idempotency_key): a concurrent
+      // retry won the race. Replay the order it created.
+      if (
+        idempotencyKey &&
+        (err as { code?: string }).code === "23505"
+      ) {
+        const { rows } = await getPool().query(
+          "SELECT * FROM orders WHERE customer_id = $1 AND idempotency_key = $2",
+          [body.customerId, idempotencyKey]
+        );
+        if (rows.length > 0) {
+          reply.header("idempotent-replayed", "true");
+          return { order: rows[0] };
+        }
+      }
+      throw err;
+    }
 
     await publishOrderEvent(
       buildEvent(

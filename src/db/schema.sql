@@ -10,9 +10,15 @@ CREATE TABLE IF NOT EXISTS orders (
     total_cents     BIGINT      NOT NULL DEFAULT 0,
     shipping_method TEXT        NOT NULL DEFAULT 'ground',
     destination     JSONB       NOT NULL,
+    idempotency_key TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- One order per (customer, idempotency key); NULL keys are exempt.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_idempotency
+    ON orders (customer_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS order_items (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
